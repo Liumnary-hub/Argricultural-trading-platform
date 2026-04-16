@@ -55,6 +55,9 @@ public class ProductService {
     private StockInMapper stockInMapper;
     @Resource
     private StockOutMapper stockOutMapper;
+
+
+
     @Caching(evict = {
             @CacheEvict(value = "productPages",allEntries = true),
             @CacheEvict(value="products",allEntries = true)

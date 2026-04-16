@@ -54,7 +54,7 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(jwtInterceptor)
                 // 添加拦截路径模式
                 .addPathPatterns("/api/**")
-                .excludePathPatterns("/api/**")
+//                .excludePathPatterns("/api/**")
                 // 排除不需要拦截的路径模式
                 .excludePathPatterns("/api/user/login")  // 登录接口不需要拦?
                 .excludePathPatterns("/api/user/forget") // 忘记密码接口不需要拦?
@@ -63,6 +63,9 @@ public class WebConfig implements WebMvcConfigurer {
                 .excludePathPatterns("/api/email/**") // 发送邮件接口不需要拦?
                 .excludePathPatterns("/api/img/**")     // 图片资源接口不需要拦?
                 .excludePathPatterns("/api/file/**")
-                .excludePathPatterns("/api/doc.html","/api/webjars/**","/api/favicon.ico").excludePathPatterns("/api/checkIn/**");
+                .excludePathPatterns("/api/doc.html","/api/webjars/**","/api/favicon.ico")
+                .excludePathPatterns("/api/checkIn/**")
+                .excludePathPatterns("/api/product/**");
+
     }
 }

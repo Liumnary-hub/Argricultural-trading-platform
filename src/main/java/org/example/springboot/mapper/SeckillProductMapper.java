@@ -1,4 +1,12 @@
 package org.example.springboot.mapper;
 
-public interface SeckillProductMapper {
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import org.apache.ibatis.annotations.Mapper;
+import org.example.springboot.entity.SeckillProduct;
+
+@Mapper
+public interface SeckillProductMapper extends BaseMapper<SeckillProduct> {
+
+
+
 }

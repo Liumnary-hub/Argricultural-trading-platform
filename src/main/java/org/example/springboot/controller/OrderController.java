@@ -2,8 +2,10 @@ package org.example.springboot.controller;
 
 import org.example.springboot.common.Result;
 import org.example.springboot.entity.Order;
+import org.example.springboot.entity.User;
 import org.example.springboot.mapper.OrderMapper;
 import org.example.springboot.service.OrderService;
+import org.example.springboot.util.JwtTokenUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,8 +21,13 @@ public class OrderController {
     private OrderService orderService;
     @Autowired
     private OrderMapper orderMapper;
+
+
+
     @PostMapping
     public Result<?> createOrder(@RequestBody Order order) {
+//        User currentUser = JwtTokenUtils.getCurrentUser();
+
         return orderService.createOrder(order);
     }
     @PutMapping("/{id}/status")

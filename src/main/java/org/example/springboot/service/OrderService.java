@@ -6,18 +6,20 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import jakarta.annotation.Resource;
 import org.example.springboot.common.Result;
 import org.example.springboot.config.ThreadPoolConfig;
-import org.example.springboot.entity.Order;
-import org.example.springboot.entity.Product;
-import org.example.springboot.entity.Logistics;
+import org.example.springboot.entity.*;
 import org.example.springboot.mapper.*;
 import org.redisson.api.RLock;
+import org.redisson.api.RMap;
 import org.redisson.api.RedissonClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -50,17 +52,18 @@ public class OrderService {
     @Autowired
     private AddressMapper addressMapper;
 
+    @Autowired
+    private SeckillProductMapper seckillProductMapper;
+
+    @Autowired
+    private SeckillOrderMapper seckillOrderMapper;
+
     @Async("taskExecutor")
     public void asyncAfterPaySuccess(Order order, Product product) {
         try {
             System.out.println("异步执行支付后业务，线程：" + Thread.currentThread().getName());
 
-            // 你可以在这里写：
-            // 1. 发送支付成功通知
-            // 2. 记录支付日志
-            // 3. 增加用户积分
-            // 4. 推送消息
-            // 5. 统计销量
+
 
         } catch (Exception e) {
             // 异步异常不影响主支付流程
@@ -73,11 +76,11 @@ public class OrderService {
     @Transactional  // 事务：订单和库存要么一起成功，要么一起失败
     public Result<?> createOrder(Order order) {
         try {
-            // 1. 查询商品 + 加行锁（高并发关键！防超卖）
+            // 1. 查询商品 + 加行锁
             Product product = productMapper.selectOne(
                     new LambdaQueryWrapper<Product>()
                             .eq(Product::getId, order.getProductId())
-                            .last("FOR UPDATE") // 加锁！同一时间只能一个人扣库存
+                            .last("FOR UPDATE")
             );
 
             // 2. 商品不存在
@@ -116,6 +119,10 @@ public class OrderService {
             throw new RuntimeException(e.getMessage(), e); // 重新抛出，触发回滚,要么去掉trycath，要么主动回滚，要么抛出运行时异常
         }
     }
+
+
+
+
 
 
     // 拆出来的业务方法（单独加事务）
@@ -345,6 +352,9 @@ public class OrderService {
             return Result.error("-1", "批量删除订单失败：" + e.getMessage());
         }
     }
+
+
+
     public Result<?> payOrder(Long id) {
         // 1. 【外层】获取分布式锁（防并发、防重复点击）
         String lockKey = "pay:order:" + id;
@@ -534,4 +544,165 @@ public class OrderService {
             return Result.error("-1", "处理退款失败：" + e.getMessage());
         }
     }
-} 
+
+
+
+
+    //依旧是抽取方法外围加上分布式锁
+    public Result<?> seckill(Long userId, Long productId, Integer quantity) {
+        String lockKey = "seckill:lock:" + productId + ":" + userId;
+        RLock lock = redissonClient.getLock(lockKey);
+        boolean locked = false;
+        try {
+            locked = lock.tryLock(3, 5, TimeUnit.SECONDS);
+            if (!locked) {
+                return Result.error("-1", "操作太频繁，请稍后再试");
+            }
+            //redis快速校验一人一单，库存，比数据库更快
+            LocalDateTime now = LocalDateTime.now();
+            String cacheKey = "seckill:product:" + productId;
+            RMap<String, Object> cache = redissonClient.getMap(cacheKey);
+            if (!cache.isEmpty()) {
+                LocalDateTime start = LocalDateTime.parse((String) cache.get("startTime"));
+                LocalDateTime end = LocalDateTime.parse((String) cache.get("endTime"));
+                Integer stock = (Integer) cache.get("stock");
+                // 快速校验时间、库存...
+                if (now.isBefore(start) || now.isAfter(end) || stock < quantity) {
+                    return Result.error("-1", "秒杀未开始/已结束/库存不足");
+                }
+                // 还可以用 Redis Set 检查一人一单
+                String usersKey = "seckill:users:" + productId;
+                if (redissonClient.getSet(usersKey).contains(userId.toString())) {
+                    return Result.error("-1", "每人限购一单");
+                }
+            }
+
+
+
+            //调用抽取的方法
+            return this.doseckillwithlock(userId, productId, quantity);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Result.error("-1", "系统繁忙");
+        } finally {
+            if (locked && lock.isHeldByCurrentThread()) {
+                lock.unlock(); //最终一定要释放锁
+            }
+        }
+    }
+
+
+
+    @Transactional
+    public Result<?>  doseckillwithlock(Long id, Long productId, Integer quantity) {
+
+        // 1. 查询秒杀商品（加行锁，防止超卖）
+        SeckillProduct sp = seckillProductMapper.selectOne(
+                new LambdaQueryWrapper<SeckillProduct>()
+                        .eq(SeckillProduct::getProductId, productId)
+                        .last("FOR UPDATE")
+        );
+        if (sp == null) {
+            return Result.error("-1", "秒杀活动不存在");
+        }
+        Long  userId=id;
+
+//        // 2. 校验时间窗口
+//        LocalDateTime now = LocalDateTime.now();
+//        if (now.isBefore(sp.getStartTime())) {
+//            return Result.error("-1", "秒杀尚未开始");
+//        }
+//        if (now.isAfter(sp.getEndTime())) {
+//            return Result.error("-1", "秒杀已结束");
+//        }
+//
+//        // 3. 校验库存
+//        if (sp.getStock() < quantity) {
+//            return Result.error("-1", "库存不足");
+//        }
+//
+        // 4. 一人一单校验（查询 seckill_order 表）
+        Long count = seckillOrderMapper.selectCount(
+                new LambdaQueryWrapper<SeckillOrder>()
+                        .eq(SeckillOrder::getUserId, userId)
+                        .eq(SeckillOrder::getProductId, productId)
+        );
+        if (count > 0) {
+            return Result.error("-1", "每人限购一单，您已秒杀过该商品");
+        }
+
+        // 5. 扣减秒杀库存
+        sp.setStock(sp.getStock() - quantity);
+        int update = seckillProductMapper.updateById(sp);
+        if (update == 0) {
+            return Result.error("-1", "库存不足，请重试");
+        }
+
+
+
+
+
+
+
+
+
+        // 6. 创建普通订单（复用 order 表）
+        Order order = new Order();
+        order.setUserId(userId);
+        order.setProductId(productId);
+        order.setQuantity(quantity);
+        order.setPrice(sp.getSeckillPrice());
+        order.setTotalPrice(sp.getSeckillPrice().multiply(BigDecimal.valueOf(quantity)));
+        order.setStatus(0); // 未支付
+        order.setCreatedAt(Timestamp.valueOf(LocalDateTime.now()));
+        orderMapper.insert(order);
+
+        // 7. 记录秒杀订单（唯一索引兜底防重复）
+        SeckillOrder so = new SeckillOrder();
+        so.setUserId(userId);
+        so.setProductId(productId);
+        so.setOrderId(order.getId());
+        so.setSeckillPrice(sp.getSeckillPrice());
+        so.setQuantity(quantity);
+        so.setStatus(0);
+        try {
+            seckillOrderMapper.insert(so);
+
+
+//
+//            String orderCacheKey = "seckill:order:" + order.getId();
+//            RMap<String, Object> orderCache = redissonClient.getMap(orderCacheKey);
+//            orderCache.put("orderId", order.getId());
+//            orderCache.put("userId", order.getUserId());
+//            orderCache.put("productId", order.getProductId());
+//            orderCache.put("price", order.getPrice());
+//            orderCache.put("status", order.getStatus());
+//            // 设置过期时间，比如 1 小时
+//            orderCache.expire(1, TimeUnit.HOURS);
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    // 事务提交后才写缓存
+                    String orderCacheKey = "seckill:order:" + order.getId();
+                    RMap<String, Object> orderCache = redissonClient.getMap(orderCacheKey);
+                    orderCache.put("orderId", order.getId());
+                    orderCache.put("userId", order.getUserId());
+                    orderCache.put("productId", order.getProductId());
+                    orderCache.put("price", order.getPrice());
+                    orderCache.put("status", order.getStatus());
+                    orderCache.expire(1, TimeUnit.HOURS);
+                }
+            });
+
+
+
+
+        } catch (DuplicateKeyException e) {
+            // 极少数并发情况下，唯一索引会捕获重复，回滚事务
+            throw new RuntimeException("一人一单冲突，请勿重复提交", e);
+        }
+
+        LOGGER.info("秒杀成功，订单ID：{}，用户ID：{}，商品ID：{}", order.getId(), userId, productId);
+        return Result.success(order);
+    }
+}

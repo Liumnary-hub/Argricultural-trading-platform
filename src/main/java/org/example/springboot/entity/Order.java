@@ -14,7 +14,9 @@ import java.sql.Timestamp;
 public class Order {
     @TableId(type = IdType.AUTO)
     private Long id;
+
     private Long userId;
+
     private BigDecimal totalPrice;
     private Integer status;
     private Integer lastStatus;
