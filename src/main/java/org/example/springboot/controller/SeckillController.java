@@ -9,6 +9,8 @@ import org.example.springboot.entity.User;
 import org.example.springboot.mapper.ProductMapper;
 import org.example.springboot.mapper.SeckillProductMapper;
 import org.example.springboot.service.OrderService;
+import org.example.springboot.service.SeckillOrderService;
+import org.example.springboot.service.SeckillService;
 import org.example.springboot.util.JwtTokenUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +30,9 @@ public class SeckillController {
     @Autowired
     private SeckillProductMapper seckillProductMapper;
 
+    @Autowired
+    private SeckillService seckillService;
+
 
     @PostMapping("/{productId}")
     public Result<?> seckill(@PathVariable Long productId,
@@ -41,7 +46,7 @@ public class SeckillController {
             return Result.error("500","未登录，请先登录");
         }
 
-        return orderService.seckill(currentUser.getId(),productId,quantity);
+        return seckillService.seckill(currentUser.getId(),productId,quantity);
     }
 
 

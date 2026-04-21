@@ -47,8 +47,8 @@ public class JwtTokenUtils {
                 token = request.getParameter("token");
             }
 
-            // 打印收到的 token（用于调试）
-            //System.out.println("=== 收到 token: " + token + " ===");
+//            // 打印收到的 token（用于调试）
+//            System.out.println("=== 收到 token: " + token + " ===");
 
             // 3. 如果依然为空，返回 null
             if (StringUtils.isBlank(token)) {

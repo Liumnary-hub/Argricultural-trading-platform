@@ -59,11 +59,13 @@ private FavoriteMapper favoriteMapper;
 
     public Result<?> login(User user){
         User compare = getByUsername(user.getUsername());
+
         if(compare==null)return Result.error("-1","用户不存在");
         if(compare.getStatus().equals(AccountStatus.DISABLED.getValue()))return Result.error("-1","账号被禁用");
         if(compare != null && bCryptPasswordEncoder.matches(user.getPassword(), compare.getPassword())){
             List<Menu> roleMenuList = menuMapper.selectList(null);
             String token = JwtTokenUtils.genToken(String.valueOf(compare.getId()), compare.getPassword());
+            System.out.println(token);
             compare.setMenuList(MenusUtils.allocMenus(roleMenuList,compare.getRole()));
             compare.setToken(token);
             return Result.success(compare);

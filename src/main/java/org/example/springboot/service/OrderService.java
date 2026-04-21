@@ -58,24 +58,26 @@ public class OrderService {
     @Autowired
     private SeckillOrderMapper seckillOrderMapper;
 
-    @Async("taskExecutor")
-    public void asyncAfterPaySuccess(Order order, Product product) {
-        try {
-            System.out.println("异步执行支付后业务，线程：" + Thread.currentThread().getName());
-
-
-
-        } catch (Exception e) {
-            // 异步异常不影响主支付流程
-            e.printStackTrace();
-        }
-    }
+//    @Async("taskExecutor")
+//    public void asyncAfterPaySuccess(Order order, Product product) {
+//        try {
+//            System.out.println("异步执行支付后业务，线程：" + Thread.currentThread().getName());
+//
+//
+//
+//        } catch (Exception e) {
+//            // 异步异常不影响主支付流程
+//            e.printStackTrace();
+//        }
+//    }
 
 
 
     @Transactional  // 事务：订单和库存要么一起成功，要么一起失败
     public Result<?> createOrder(Order order) {
         try {
+
+
             // 1. 查询商品 + 加行锁
             Product product = productMapper.selectOne(
                     new LambdaQueryWrapper<Product>()
@@ -558,6 +560,16 @@ public class OrderService {
             if (!locked) {
                 return Result.error("-1", "操作太频繁，请稍后再试");
             }
+
+
+
+
+
+
+
+
+
+
             //redis快速校验一人一单，库存，比数据库更快
             LocalDateTime now = LocalDateTime.now();
             String cacheKey = "seckill:product:" + productId;

@@ -8,5 +8,5 @@ import org.example.springboot.entity.SeckillProduct;
 public interface SeckillProductMapper extends BaseMapper<SeckillProduct> {
 
 
-
+//    int updateStockToZero(Long productId);
 }
